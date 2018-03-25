@@ -1,0 +1,545 @@
+# AUTHOR: Cordula Thekla Eggerth (00750881)
+
+# DATA QUALITY REPORTING FOR ISWAF  - OVERALL REPORT GENERATION
+
+# ------------------------------------------------------------------------------------------------------------
+
+# Use package XLConnect:
+install.packages("XLConnect")
+library(XLConnectJars)
+library(XLConnect)
+require(XLConnectJars)
+require(XLConnect)
+
+# Use package xlsx:
+install.packages("xlsx")      
+library(xlsxjars)
+library(xlsx)
+require(xlsxjars)
+require(xlsx)
+
+
+
+# Clear all old objects from the file:
+rm(list=ls())
+
+
+# ------------------------------------------------------------------------------------------------------------
+
+###############################################################################################################
+# READ & PREPARE INPUT DATA FROM ALL COUNTRY QUALITY CHECK REPORTS AVAILABLE: 
+###############################################################################################################
+
+
+# set work directory:
+setwd("C:/Users/cordu/Desktop/BA/data")
+
+list.files()
+
+
+# read quality check data from country reports:
+filelist <- list.files()
+countrylist <- c("ITALY", "KOREA", "VIETNAM", "AUSTRALIA")    ##### enter countrylist ####
+pattern_part1 <- "quality_checks_"                            ##### enter standardized quality checks filename beginning
+file_extension <- ".xlsx"                                     ##### enter standardized quality checks file extension
+
+files_forAnalysis <- rep("0",length(countrylist))
+
+  for(i in 1:length(countrylist)){
+    
+    files_forAnalysis[i] <- paste0(getwd(),"/",pattern_part1,countrylist[i],file_extension) # filename incl. path
+      
+  }
+
+# CHECK if filenames are available in the directory:
+  bool_filenameCheck <- all( (paste0(pattern_part1,countrylist,file_extension)) %in% filelist)
+  bool_filenameCheck
+
+
+
+# read the information on "number of missing cases per variable" from excel file
+# (i.e. WORKSHEET 2 "missing_perVariable")
+
+  read_worksheetinfo <- function(filename,sheetnumber){
+ 
+    df_qualitychecks <- readWorksheetFromFile(file=filename, sheet=sheetnumber, header=TRUE, 
+                                           startCol=1, startRow=3, endCol=2)  # endRow default value is number of rows where data entries available
+    
+    # RETURN info read from excel file
+    df_qualitychecks
+  }
+  
+  
+  # read worksheet 2 from all countries in the countrylist:
+    missings_perVariable_list <- vector("list")
+  
+    for(i in 1:length(countrylist)){
+      
+      missings_perVariable_list[[countrylist[i]]] <- read_worksheetinfo(files_forAnalysis[i],2)
+      
+    }
+    
+    missings_perVariable_list
+  
+    # CHECK:read_nrMissingCases_perVariable(files_forAnalysis[2])
+ 
+    
+    
+
+    
+
+# read the information on "number of missing cases per participant" from excel file 
+# (i.e. WORKSHEET 5 "missing_perPerson_table_incl0")
+
+    # read worksheet 5 from all countries in the countrylist:
+    missings_perParticipant_list <- vector("list")
+    
+    for(i in 1:length(countrylist)){
+      
+      missings_perParticipant_list[[countrylist[i]]] <- read_worksheetinfo(files_forAnalysis[i],5)
+      
+    }
+    
+    missings_perParticipant_list
+
+
+ 
+       
+    
+
+    
+# prepare data.frame on the "number of missing cases per variable" (worksheet 2 read previously)
+    
+    nr_cols_output <- length(missings_perVariable_list[[countrylist[1]]]$variableLabel)
+    
+    
+    # create output matrix: 
+    #  rows ... countries
+    #  cols ... variable labels
+    #  cell entries ... nr. of missing cases per variable
+    
+    # create matrix
+    output_nrMissingCases_perVariable <- matrix(rep(0,length(countrylist)*nr_cols_output), 
+                                                ncol=nr_cols_output,
+                                                nrow=length(countrylist))
+
+    # add colnames and rownames
+    colnames(output_nrMissingCases_perVariable) <- missings_perVariable_list[[countrylist[1]]]$variableLabel
+    rownames(output_nrMissingCases_perVariable) <- countrylist
+    
+    # add cell entries
+    for(i in 1:length(missings_perVariable_list)){
+      
+      output_nrMissingCases_perVariable[i, ] <- missings_perVariable_list[[countrylist[i]]]$missingCases 
+    
+    }
+    
+    # convert matrix to data.frame
+    output_nrMissingCases_perVariable_df <- as.data.frame(output_nrMissingCases_perVariable, stringsAsFactors = FALSE)
+    
+    # output to be written to excel file
+    output_nrMissingCases_perVariable_df   
+     
+    
+
+    
+    
+    
+    
+# prepare data.frame on the "frequency distribution of missing cases among participants (incl. 0)" (worksheet 5 read previously)
+  
+    # determine nr. of cols  
+    missingsInfo_perCountry <- sapply(missings_perParticipant_list,"[",2)
+    missingsInfo_perCountry_lengths <- sapply(missingsInfo_perCountry,length)
+    maxNrMissings_perParticipant <- max(missingsInfo_perCountry_lengths) # max. nr of missings per participant
+    
+    # create output matrix: 
+    #  rows ... countries
+    #  cols ... frequency of missing cases per participant (incl. zero)
+    #  cell entries ... nr. of missing cases per participant
+    
+    # create matrix
+    output_nrMissingCases_frequency <- matrix(rep(0,length(countrylist)*maxNrMissings_perParticipant), 
+                                                ncol=maxNrMissings_perParticipant+1, # +1 due to zeros entry
+                                                nrow=length(countrylist))
+    
+    # add colnames and rownames
+    colnames(output_nrMissingCases_frequency) <- (0:maxNrMissings_perParticipant)
+    rownames(output_nrMissingCases_frequency) <- countrylist
+
+    # add cell entries
+    for(i in 1:length(missings_perParticipant_list)){
+      
+      for(j in 1:length(missings_perParticipant_list[[countrylist[i]]]$numberParticipants)){ 
+      
+        output_nrMissingCases_frequency[i,j] <- missings_perParticipant_list[[countrylist[i]]]$numberParticipants[j]
+    
+      } 
+    }
+    
+    # convert matrix to data.frame
+    output_nrMissingCases_frequency_df <- as.data.frame(output_nrMissingCases_frequency, stringsAsFactors = FALSE)
+    
+    # output to be written to excel file
+    output_nrMissingCases_frequency_df      
+    
+
+
+    
+
+# ------------------------------------------------------------------------------------------------------------
+
+
+###############################################################################################################
+# VISUALIZATION OF OVERVIEW QUALITY DATA:
+###############################################################################################################
+
+    
+
+    # base data: NR. OF MISSING CASES PER VARIABLE
+    output_nrMissingCases_perVariable_df
+    
+    # color palette
+    color_pal <- colorRampPalette(c("lightpink2", "cyan3", "lightgreen", "khaki2"))
+    
+    # tailor to countries
+    colors <-color_pal(length(countrylist))
+    
+    # change type to numeric matrix (d)
+    c <- as.numeric(as.matrix(output_nrMissingCases_perVariable_df, drop=FALSE) )
+    d <- matrix(c, nrow=length(countrylist))
+    colnames(d) <- colnames(output_nrMissingCases_perVariable_df)
+    rownames(d) <- countrylist
+    
+    # plot
+    barplot(d, 
+            main="number of missing cases per variable",
+            xlab="variable labels",
+            ylab="number of missing cases",
+            col=colors, 
+            las=1, 
+            beside=TRUE,
+            axisnames = TRUE,
+            cex.names=0.55  # adapt size of axis labels (on x-axis)
+           )
+    
+    
+    # legend
+    legend(x="topright", legend=rownames(b), 
+           bg="white",
+           col=colors, 
+           lwd=5
+    )
+    
+    
+    
+    
+    
+    
+    
+    # base data: FREQUENCY DISTRIBUTION OF TOTAL MISSING CASES AMONG PARTICIPANTS
+    output_nrMissingCases_frequency_df
+
+    # color palette
+    color_pal <- colorRampPalette(c("lightpink2", "cyan3", "lightgreen", "khaki2"))
+
+    # tailor to countries
+    colors <-color_pal(length(countrylist))
+
+    # change type to numeric matrix (b)
+    a <- as.numeric(as.matrix(output_nrMissingCases_frequency_df, drop=FALSE) )
+    b <- matrix(a, nrow=length(countrylist))
+    colnames(b) <- colnames(output_nrMissingCases_frequency_df)
+    rownames(b) <- countrylist
+    
+    # plot
+    barplot(b, 
+            main="frequency distribution of total number missing cases",
+            xlab="total number of missing cases per participant",
+            ylab="number of participants",
+            col=colors, 
+            las=1, 
+            beside=TRUE,
+            ylim=c(0,max(rowSums(b))+20)
+            )
+
+    # legend
+    legend(x="topright", legend=rownames(b), 
+           bg="white",
+           col=colors, 
+           lwd=5
+           )
+
+    
+    
+    
+    
+    
+    
+# ------------------------------------------------------------------------------------------------------------
+    
+    
+###############################################################################################################
+# WRITE QUALITY OVERVIEW TO EXCEL FILE:
+###############################################################################################################
+
+    
+    # create file path where excel sheet will be placed
+    xls_file <- paste0(getwd(),"/overall_quality_check.xlsx") 
+    
+    # basis
+    output_nrMissingCases_perVariable_df  
+    
+    # convert to numeric
+    output_nrMissingCases_perVariable_df.num <- sapply(output_nrMissingCases_perVariable_df, as.numeric)
+    rownames(output_nrMissingCases_perVariable_df.num) <- rownames(output_nrMissingCases_perVariable_df)
+    
+    
+# WORKSHEET 1: write worksheet "nr_missingCases_perVariable" in the xls_file
+    
+    # write output_nrMissingCases_perVariable_df.num to excel
+    wb <- createWorkbook()
+    sheet <- createSheet(wb, sheetName="nr_missingCases_perVariable")
+    addDataFrame(output_nrMissingCases_perVariable_df.num, sheet, startRow=3, startColumn=1)
+    saveWorkbook(wb, xls_file)
+    
+    
+    # open workbook xls_file
+    wb <- loadWorkbook(xls_file)
+    sheet1 <- getSheets(wb)[[1]]
+    
+    
+    # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+    TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                       color="black", isBold=TRUE, underline=1)
+    
+    xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+      rows <-createRow(sheet,rowIndex=rowIndex)
+      sheetTitle <-createCell(rows, colIndex=1)
+      setCellValue(sheetTitle[[1,1]], title)
+      setCellStyle(sheetTitle[[1,1]], titleStyle)
+    }
+    
+    
+    # add title 
+    xlsx.addTitle(sheet1, 
+                  rowIndex=1, 
+                  title=paste0("number of missing cases per variable"),
+                  titleStyle = TITLE_STYLE)
+    
+    
+    # save workbook          
+    saveWorkbook(wb, xls_file) 
+    
+    
+    
+# ------------------------------------------------------------------    
+    
+    
+    
+# WORKSHEET 2: WRITE PLOT for nr_missingCases_perVariable to excel:
+    
+    # create jpeg file from plot:
+    png('missingCases_perVariable.png')
+    
+    # plot
+    barplot(d, 
+            main="number of missing cases per variable",
+            xlab="variable labels",
+            ylab="number of missing cases",
+            col=colors, 
+            las=1, 
+            beside=TRUE,
+            axisnames = TRUE,
+            cex.names=0.61  # adapt size of axis labels (on x-axis)
+    )
+    
+    
+    # legend
+    legend(x="topright", legend=rownames(b), 
+           bg="white",
+           col=colors, 
+           lwd=5
+    )
+    
+    dev.off() # switch off graphics window
+    
+    
+    # open workbook xls_file
+    wb <- loadWorkbook(xls_file)
+    
+    # create new worksheet for the file
+    sheet <- createSheet(wb, "plot_nr_missingCases_perVariable")
+    
+    
+    # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+    TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                       color="black", isBold=TRUE, underline=1)
+    
+    xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+      rows <-createRow(sheet,rowIndex=rowIndex)
+      sheetTitle <-createCell(rows, colIndex=1)
+      setCellValue(sheetTitle[[1,1]], title)
+      setCellStyle(sheetTitle[[1,1]], titleStyle)
+    }
+    
+    
+    # add title 
+    xlsx.addTitle(sheet, 
+                  rowIndex=1, 
+                  title="number of missing cases per variable",
+                  titleStyle = TITLE_STYLE)
+    
+    
+    # add plot to the worksheet
+    addPicture("missingCases_perVariable.png", sheet, 
+               startRow=3,
+               startColumn=2, 
+               scale=10)
+    
+    # remove png from current work directory
+    res<-file.remove("missingCases_perVariable.png")
+    
+    # save changed workbook in xls_file object
+    saveWorkbook(wb, xls_file)     
+    
+    
+    
+# ----------------------------------------------------------------
+    
+    
+    
+# WORKSHEET 3: write worksheet "frequency_missings_perParticipant" in the xls_file
+
+    # basis
+    output_nrMissingCases_frequency_df
+
+    
+    # convert to numeric
+    output_nrMissingCases_frequency_df.num <- sapply(output_nrMissingCases_frequency_df, as.numeric)
+    rownames(output_nrMissingCases_frequency_df.num) <- rownames(output_nrMissingCases_frequency_df)
+    
+    
+    # write data to excel
+    wb <- loadWorkbook(xls_file)
+    
+    sheet <- createSheet(wb, sheetName="frequency_missings_perParticipant")
+    addDataFrame(output_nrMissingCases_frequency_df.num, sheet, startRow=3, startColumn=1)
+    saveWorkbook(wb, xls_file)
+    
+    
+    # add title
+    
+    # open workbook xls_file
+    wb <- loadWorkbook(xls_file)
+    sheet1 <- getSheets(wb)[[3]]
+    
+    
+    # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+    TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                       color="black", isBold=TRUE, underline=1)
+    
+    xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+      rows <-createRow(sheet,rowIndex=rowIndex)
+      sheetTitle <-createCell(rows, colIndex=1)
+      setCellValue(sheetTitle[[1,1]], title)
+      setCellStyle(sheetTitle[[1,1]], titleStyle)
+    }
+    
+    
+    # add title 
+    xlsx.addTitle(sheet1, 
+                  rowIndex=1, 
+                  title=paste0("number of missing cases per variable"),
+                  titleStyle = TITLE_STYLE)
+    
+    
+    # save workbook          
+    saveWorkbook(wb, xls_file) 
+    
+    
+# ----------------------------------------------------------------
+    
+    
+# WORKSHEET 4: WRITE PLOT for frequency_missings_perParticipant to excel:
+    
+    # create jpeg file from plot:
+    png('frequency_missings_perParticipant.png')
+    
+    
+    # change type to numeric matrix (b)
+    a <- as.numeric(as.matrix(output_nrMissingCases_frequency_df, drop=FALSE) )
+    b <- matrix(a, nrow=length(countrylist))
+    colnames(b) <- colnames(output_nrMissingCases_frequency_df)
+    rownames(b) <- countrylist
+    
+    # plot
+    barplot(b, 
+            main="frequency distribution of total number missing cases",
+            xlab="total number of missing cases per participant",
+            ylab="number of participants",
+            col=colors, 
+            las=1, 
+            beside=TRUE,
+            ylim=c(0,max(rowSums(b))+20)
+    )
+    
+    # legend
+    legend(x="topright", legend=rownames(b), 
+           bg="white",
+           col=colors, 
+           lwd=5
+    )
+    
+    dev.off() # switch off graphics window
+    
+    
+    # open workbook xls_file
+    wb <- loadWorkbook(xls_file)
+    
+    # create new worksheet for the file
+    sheet <- createSheet(wb, "plot_frequency_missings_perParticipant")
+    
+    
+    # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+    TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                       color="black", isBold=TRUE, underline=1)
+    
+    xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+      rows <-createRow(sheet,rowIndex=rowIndex)
+      sheetTitle <-createCell(rows, colIndex=1)
+      setCellValue(sheetTitle[[1,1]], title)
+      setCellStyle(sheetTitle[[1,1]], titleStyle)
+    }
+    
+    
+    # add title 
+    xlsx.addTitle(sheet, 
+                  rowIndex=1, 
+                  title="frequency of missings perParticipant",
+                  titleStyle = TITLE_STYLE)
+    
+    
+    # add plot to the worksheet
+    addPicture("frequency_missings_perParticipant.png", sheet, 
+               startRow=3,
+               startColumn=2, 
+               scale=10)
+    
+    # remove png from current work directory
+    res<-file.remove("frequency_missings_perParticipant.png")
+    
+    # save changed workbook in xls_file object
+    saveWorkbook(wb, xls_file)     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    

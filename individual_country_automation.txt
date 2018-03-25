@@ -1,0 +1,1342 @@
+# AUTHOR: Cordula Thekla Eggerth (00750881)
+
+# DATA QUALITY REPORTING FOR ISWAF  
+
+# ------------------------------------------------------------------------------------------------------------
+
+# Use package XLConnect:
+install.packages("XLConnect")
+library(XLConnectJars)
+library(XLConnect)
+require(XLConnectJars)
+require(XLConnect)
+
+# Use package xlsx:
+install.packages("xlsx")      
+library(xlsxjars)
+library(xlsx)
+require(xlsxjars)
+require(xlsx)
+
+# Use package gdata:
+install.packages("gdata")
+library(gdata)
+require(gdata)
+
+
+# Clear all old objects from the file:
+rm(list=ls())
+
+
+# ------------------------------------------------------------------------------------------------------------
+
+###############################################################################################################
+# READ & PREPARE INPUT DATA: 
+###############################################################################################################
+
+
+# set work directory:
+setwd("C:/Users/cordu/Desktop/BA/data")  ########## SET WORK DIRECTORY ##########
+
+list.files()
+
+
+# select country's raw data:
+filelist <- list.files()
+
+
+###############################################################################################################
+########### ENTER COUNTRY FOR ANALYSIS ############
+###############################################################################################################
+
+selectedcountry <- "KOREA"
+
+    
+#----------------------------------------------------------------------------------------------------------------       
+    
+###############################################################################
+### EXTRACT ISWAF RESULTS FOR ISWAF FOR SELECTED COUNTRY (raw data of survey) ####
+###############################################################################
+    
+    # search country file pattern among files
+    searchpattern <- paste0("ISWAF_",selectedcountry, "_results_raw.xls")
+    
+    file_country <- grep(searchpattern, filelist, ignore.case = TRUE, value=TRUE)
+ 
+  
+  
+  # read worksheet from xls file:
+    df_country_results_raw_data <- XLConnect::readWorksheetFromFile(file=file_country, sheet=1, header=TRUE, 
+                                                     startCol=1, startRow=1, endCol=168)  # endRow default value is number of rows where data entries available
+    
+    is.data.frame(df_country_results_raw_data) # readWorksheetFromFile saves data in data.frame type
+    
+    # description of data.frame:
+    # colnames ... survey question IDs
+    # rownames ... survey participant IDs
+    
+
+    
+
+################   
+### CODEBOOK ###
+################    
+  
+  # prepare framework for codebook content (as list)
+      question_id_list <- colnames(df_country_results_raw_data)[-1] # delete "ID" header entry
+      number_question <- length(question_id_list)  
+      
+      # question_id_list without "v..._r" entries:
+      question_id_list_withoutReversedInfo <- grep("_r", question_id_list, value=TRUE,
+                                                   invert=TRUE, ignore.case=TRUE)
+      
+
+
+      # country_results without "v..._r" entries:
+      df_country_results_raw_data_withoutReversedInfo <- df_country_results_raw_data[ , question_id_list_withoutReversedInfo]
+
+      
+      
+      
+      # codebook filename:   
+      codebook_filename <- "Codebook_ISWAF.xlsx"
+    
+      # create new empty list for codebook content:
+      codebook_list <- vector("list")  
+      
+      # extract codebook header information (from Codebook_ISWAF.xlsx):
+        # [1] Variable Label
+        # [2] Variable Description
+        # [3] Code 
+        # [4] Value Labels
+        # [5] Subject 
+        ## ADD NEW INFO FOR DATA CHECKS:
+        # [6] Reverse Coded
+        # [7] Other Code Allowed
+      
+      codebook_header <- readWorksheetFromFile(file=codebook_filename, sheet=1, header=FALSE,
+                                               startCol=2, startRow=1, endCol=6, endRow=1)
+      
+      codebook_header <- sub("\n"," ",codebook_header) # clean format of codebook header
+      codebook_header <- c(codebook_header,"Reverse Coded") # [6] info contained in "Value Labels" col
+      codebook_header <- c(codebook_header,"Other Code Allowed") # [7] "no", "string", "numeric"
+  
+          
+  # READ CODEBOOK CONTENT from worksheet and add content to codebook_list for the respective Variable Labels:
+  
+      
+  # LIST OF ALL INPUTS:
+    list_all_inputs <- vector("list") 
+      
+     
+    # automatisiertes einlesen der codebook-datei     
+    wb <- XLConnect::loadWorkbook(codebook_filename) # Verweis aufs Paket notwendig, da scheinbar Konflikt mit Paket xlsx
+    
+    ind <- readWorksheet(wb, sheet=1, header=FALSE,
+                         startCol=2, startRow=1, endCol=2)
+    
+    x <- which(!is.na(ind))[-1]
+    names(x) <- ind[!is.na(ind)][-1]
+    # recode Variablen excludieren
+    x <- x[!grepl("_r$", names(x))]
+    
+    for(i in 1:(length(x) - 1))
+      list_all_inputs[[names(x)[i]]] <- readWorksheet(object = wb, sheet = 1, header=FALSE, startCol=2, startRow=x[i], endCol=6, endRow=x[i+1]-1)
+    
+    # letzte Zeile muss händisch angeben werden
+    i <- length(x)
+    list_all_inputs[[names(x)[i]]] <- readWorksheet(object = wb, sheet = 1, header=FALSE, startCol=2, startRow=x[i], endCol=6, endRow=1121)
+    
+    
+    
+    
+    
+    
+    # LIST OF ALL INPUTS (from Codebook_ISWAF.xls):
+      list_all_inputs
+      length(list_all_inputs) # CHECK length
+      length(question_id_list_withoutReversedInfo) # CHECK length
+    
+      # list elements:
+      #add v001 bis v030b (jeweils cb_v033d_input)
+      # dann liste_v030c_to_v032f
+      #add v033a bis v033d
+      # dann liste_v033e_to_v035h
+      #add v036 bis v040
+      # liste_v040a_to_v044
+      #add v045 bis v046f
+      # liste_v047_to_v048i
+      #add v049a bis v052      
+      
+      
+          
+      
+        
+      
+  #  FUNCTION TO ADD CONTENT OF ONE QUESTION TO THE codebook_list:
+      
+     # parameters:
+     #   question_id ... ID of the question (in this case "Variable Label")
+     #   cb_input ... raw data input from the codebook excel file
+      
+     addContent_question <- function(question_id, cb_input){
+       
+       # list for question_id ("Label") content in the codebook_list
+        question_id_i <- vector("list") 
+       
+       # add info to question_id's content list
+        for(i in 1:length(codebook_header)){ # iterations: length of codebook_header
+          
+          
+           if(i==1 || i==2 || i==5){
+             question_id_i[[codebook_header[i]]] <- cb_input[1,i]
+           }
+          
+           if(i==3){
+             if("reverse coded " %in% cb_input[ ,4]){
+               question_id_i[[codebook_header[i]]] <- cb_input[1:(length(cb_input[ ,i])-1),i]
+             } 
+             else{
+               question_id_i[[codebook_header[i]]] <- cb_input[1:length(cb_input[ ,i]),i]
+             }
+           }     
+          
+           if (i==4){
+             if("reverse coded " %in% cb_input[ ,i]){
+               question_id_i[[codebook_header[i]]] <- cb_input[1:(length(cb_input[ ,i])-1),i]
+             }
+             else{
+               question_id_i[[codebook_header[i]]] <- cb_input[1:length(cb_input[ ,i]),i]
+               
+             }
+           } 
+          
+           if(i==6){
+             question_id_i[[codebook_header[i]]] <- ifelse("reverse coded " %in% cb_input[ ,4], "yes", "no")
+           } 
+          
+           if(i==7){
+             if(question_id=="v002" | question_id=="v007" | question_id=="v016a" |
+                question_id=="v016b" | question_id=="v016c" | question_id=="v019" |
+                question_id=="v038b" | question_id=="v051" | question_id=="v018a" | 
+                question_id=="v020" | question_id=="v036" | question_id=="v036a"){
+                     question_id_i[[codebook_header[i]]] <- "numeric"
+                     break
+             }
+             
+             if(question_id=="v015a" | question_id=="v049b"){
+                question_id_i[[codebook_header[i]]] <- "string"
+                break
+             }
+              
+             else{ 
+                question_id_i[[codebook_header[i]]] <- "no"
+             }
+           }
+           
+        }
+        
+        # CHECK current entry of codebook_list
+        print(question_id_i)
+      
+        # RETURN: current entry of codebook_list
+        question_id_i 
+        
+     }
+     
+     
+     
+ 
+     # TEST FUNCTION for one codebook_list entry:
+     codebook_list_test <- vector("list")
+     cb_entry_test <- addContent_question("v051",cb_v051_input) # dummy: "v001", cb_v001_input
+     codebook_list_test$v051 <- cb_entry_test  
+
+     str(codebook_list_test) # structure of codebook_list_test data object
+     
+     
+
+     
+     ## ADD ALL ENTRIES (from list_all_inputs) to codebook_list using the function addContent_question
+     ##    and reset v038 and v038a due to inconsistent codes (codebook vs. results files)
+        
+        # create empty codebook_list
+          codebook_list <- vector("list")
+      
+        # add inputs from list_all_inputs in structured format to codebook_list
+          
+          for(i in 1:length(list_all_inputs)){
+          
+            codebook_list[[question_id_list_withoutReversedInfo[i]]] <- addContent_question(question_id=question_id_list_withoutReversedInfo,
+                                                                                           cb_input=list_all_inputs[[i]])
+ 
+            # set "v038" variable label to "v038a" and "v038a" to "v038b"
+            if(question_id_list_withoutReversedInfo[i] == "v038a"){
+              codebook_list[[question_id_list_withoutReversedInfo[i]]]$`Variable Label` <- "v038a"
+            }
+            
+            if(question_id_list_withoutReversedInfo[i] == "v038b"){
+              codebook_list[[question_id_list_withoutReversedInfo[i]]]$`Variable Label` <- "v038b"
+            }
+                      
+          } 
+          
+          
+          # re-assigns
+          codebook_list[["v002"]]$`Other Code Allowed` <- "numeric" 
+          codebook_list[["v007"]]$`Other Code Allowed` <- "numeric"  
+          codebook_list[["v015a"]]$`Other Code Allowed` <- "string"
+          codebook_list[["v016a"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v016b"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v016c"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v018a"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v019"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v020"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v036"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v036a"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v038b"]]$`Other Code Allowed` <- "numeric"
+          codebook_list[["v049b"]]$`Other Code Allowed` <- "string"
+          codebook_list[["v051"]]$`Other Code Allowed` <- "numeric"  
+          
+          
+              ##  CHECK EXAMPLE: codebook_list[["v038b"]]
+          
+          
+        # structured list, which contains the codebook information
+          codebook_list 
+          str(codebook_list)
+
+
+# ------------------------------------------------------------------------------------------------------------
+
+###############################################################################################################
+# CHECK CODEBOOK CONSISTENCY:
+###############################################################################################################
+          
+
+        # CHECK VARIABLE 38 CODING: 
+        # (if question_id_list from results file corresponds to list of Variable Labels from Codebook)
+          count <- 0
+          for(i in 1:length(codebook_list)){
+            if(question_id_list_withoutReversedInfo[i] == codebook_list[[i]]$'Variable Label'){
+              count <- count+1
+            }
+            else{
+              print(codebook_list[[i]]$'Variable Label')
+            }
+          }
+          count # number of all correspondent cases
+          length(question_id_list_withoutReversedInfo) # corresponds to count
+          
+          # CHECK correctness of formerly inconsistent cases in variable coding
+          codebook_list$v038a  # CHECK if v038a is correct
+          codebook_list$v038b  # CHECK if v038b is correct
+
+          
+           
+                    
+     
+# ------------------------------------------------------------------------------------------------------------
+
+###############################################################################################################
+# CHECK IF RESULTS DATA CORRESPONDS TO ALLOWED CODES (according to codebook)
+###############################################################################################################
+
+                    
+     
+ # TEST IF DATA OF COUNTRY CORRESPONDS TO ALLOWED CODES
+          
+     # BASE DATA:
+       rawdata_results <- df_country_results_raw_data_withoutReversedInfo
+       codebook <- codebook_list          
+       rownames(rawdata_results)[2]
+ 
+    
+     # FUNCTION TO CHECK CODES IN RESULTS:
+       
+       # parameters:
+       #   codebook ... fully structured and prepared version of the info from the codebook excel file
+       #   rawdata_results ... data.frame of the the raw survey results
+       
+       checkResultCodes <- function(codebook, rawdata_results){
+         
+         # create empty errorlist:   
+         errorlist <- vector("list") 
+
+         # check result codes per variable:
+         for(i in 1:ncol(rawdata_results)){  
+
+           # create empty errorentry components for errorlist:
+           errorentry_for_currentvar <- vector("list")
+           participantIDs <- rep("0",1)
+           incorrectValues <- rep("0",1)
+
+           # current variable label:
+           current_var <- colnames(rawdata_results)[i]
+           
+           for(j in 1:nrow(rawdata_results)){ # start from 2 because 1st row is variable labels
+             
+              # current participantID:
+              current_participant <- rownames(rawdata_results)[j]
+   
+           #### TESTING PRINT 
+           cat("testing variable:",i," and participant ID:", j, "\n")
+                        
+              # CASE 'OTHER CODE ALLOWED' IS "NO":
+              # check variable codes for results:
+              if(!(rawdata_results[j,i] %in% codebook[[i]]$Code) & (codebook[[i]]$`Other Code Allowed` == "no")){
+               
+                # save participantID and incorrectValue in the corresponding vectors
+                participantIDs <- c(participantIDs, current_participant)
+                incorrectValues <- c(incorrectValues, rawdata_results[j,i])
+               
+              }  
+ 
+              # CASE 'OTHER CODE ALLOWED' IS "NUMERIC":
+              # check variable codes for results:
+              if( ( (codebook[[i]]$`Other Code Allowed` == "numeric") & 
+                  ( codebook[[i]]$`Variable Label` != "v018a" ) &
+                  ( codebook[[i]]$`Variable Label` != "v007" )  &
+                  ( codebook[[i]]$`Variable Label` != "v016b" )  &
+                  ( codebook[[i]]$`Variable Label` != "v038b" )  &
+                  ( length(unlist(strsplit(as.character(rawdata_results[j,i]), split=""))) >=1 )  &
+                  ( !all(unlist(strsplit(as.character(rawdata_results[j,i]), split="")) %in% c(0:9,",",".")) ) 
+                  )
+                  | # OR  
+                  ( (codebook[[i]]$`Other Code Allowed` == "numeric") & 
+                    ( codebook[[i]]$`Variable Label` != "v018a" ) &
+                    ( codebook[[i]]$`Variable Label` != "v007" )  &
+                    ( codebook[[i]]$`Variable Label` != "v016b" )  &
+                    ( codebook[[i]]$`Variable Label` != "v038b" )  &
+                    ( length(unlist(strsplit(as.character(rawdata_results[j,i]), split=""))) == 1 ) &
+                    ( !all(unlist(strsplit(as.character(rawdata_results[j,i]), split="")) %in% (0:9)) ) 
+                  )
+                  | # OR
+                  ( ( codebook[[i]]$`Variable Label` == "v007" ) &
+                    ( !all(unlist(strsplit(as.character(rawdata_results[j,i]), split="")) %in% c(0:9,"e","+")) )
+                  )
+                ){  
+                
+                
+                 # CHECK:
+                 # (codebook[["v036a"]]$`Other Code Allowed` == "numeric") & 
+                 # ( length(unlist(strsplit(as.character(rawdata_results[3,"v036a"]), split=""))) >=1 ) ) &
+                 # ( !all(unlist(strsplit(as.character(rawdata_results[3,"v036a"]), split="")) %in% c(0:9,",",".")) ) 
+                 # CHECK:
+                 # (codebook[["v036a"]]$`Other Code Allowed` == "numeric") & 
+                 # ( length(unlist(strsplit(as.character(rawdata_results[3,"v036a"]), split=""))) == 1 ) ) &
+                 # ( !all(unlist(strsplit(as.character(rawdata_results[3,"v036a"]), split="")) %in% (0:9)) ) 
+
+                
+                
+              
+                # save participantID and incorrectValue in the corresponding vectors
+                participantIDs <- c(participantIDs, current_participant)
+                incorrectValues <- c(incorrectValues, rawdata_results[j,i])   
+                
+              }
+                              # CHECK: current_participant <- 254
+                              # CHECK: current_var <- "v051"
+                              # CHECK: codebook[["v051"]]$`Other Code Allowed` == "numeric"   
+                              # CHECK: !is.numeric(rawdata_results[254,"v051"])
+                              # CHECK: !is.na(rawdata_results[254,"v051"])
+                              # CHECK: incorrectValues <- c(incorrectValues, rawdata_results[254,"v051"])   
+
+           
+              # CASE 'OTHER CODE ALLOWED' IS "STRING":
+              # check variable codes for results:
+              if( (codebook[[i]]$`Other Code Allowed` == "string") & 
+                  ( length(unlist(strsplit(as.character(rawdata_results[j,i]), split=""))) >1 ) &
+                  !(all(unlist(strsplit(as.character(rawdata_results[j,i]), split="")) %in% c(letters, LETTERS, NA))) ){
+                    
+                # save participantID and incorrectValue in the corresponding vectors
+                participantIDs <- c(participantIDs, current_participant)
+                incorrectValues <- c(incorrectValues, rawdata_results[j,i])   
+                
+              }
+ 
+                           
+           }  
+           
+           
+           # add data for current variable to its errorentry, if errors exist:
+           if( !(length(participantIDs) == 1) ){
+             
+             # delete first entry "0" in the vectors:
+             participantIDs <- participantIDs[-1]
+             incorrectValues <- incorrectValues[-1]
+             
+             # add data to errorentry
+             errorentry_for_currentvar$'Variable Label' <- current_var
+             errorentry_for_currentvar$'Variable Description' <- codebook[[i]]$`Variable Description`
+             errorentry_for_currentvar$participantIDs <- participantIDs
+             bool_incorrectvalues_NA <- is.na(incorrectValues)
+             incorrectValues[bool_incorrectvalues_NA] <- "0"
+             errorentry_for_currentvar$incorrectValues <- incorrectValues
+             
+             # add errorentry for current variable to errorlist:
+             errorlist[[current_var]] <- errorentry_for_currentvar
+             
+           }
+           
+         
+         }
+         
+         # CHECK: print errorlist
+         # print(errorlist)
+         
+         # RETURN: errorlist containing the errorentries for all variables
+         errorlist
+         
+       }
+       
+              
+       
+ 
+    # TEST CALL OF FUNCTION checkResultCodes:
+       
+       errorlist_ISWAF <- checkResultCodes(codebook=codebook, rawdata_results=rawdata_results)
+       
+       # comment: function call shows that there are no incorrectly coded entries and no datatype errors 
+       #          in the dataset for the sample country Italy
+
+
+          
+ 
+# ------------------------------------------------------------------------------------------------------------
+
+###############################################################################################################
+# ANALYSIS OF MISSING VALUES IN RESULTS DATA (according to missing codes from codebook)
+###############################################################################################################
+       
+       
+       
+  # ANALYSIS OF MISSING VALUES IN RESULTS: (according to missing code from the codebook)
+       
+       
+    # extract variables, which have missing codes, from codebook: 
+
+      variable_labels_withMissing <- "0"
+      code_missing <- "0"
+      variable_description_withMissing <- "0"
+              
+      for(i in 1:length(codebook)){
+        
+        if( sum((tolower(codebook[[i]]$`Value Label`) == "missing "))>0 | 
+            sum((tolower(codebook[[i]]$`Value Label`) == "missing"))>0  ){
+          
+          variable_labels_withMissing <- c(variable_labels_withMissing, codebook[[i]]$`Variable Label`)
+          
+          if(codebook[[i]]$`Variable Label` == "v046b" || # different row number due to reverse code info in codebook
+             codebook[[i]]$`Variable Label` == "v046d") {
+            code_missing <- c(code_missing, codebook[[i]]$Code[length(codebook[[i]]$Code)-1])
+          }
+          else{
+            code_missing <- c(code_missing, codebook[[i]]$Code[length(codebook[[i]]$Code)])
+          }
+          variable_description_withMissing <- c(variable_description_withMissing, codebook[[i]]$`Variable Description`)
+          
+        }
+        
+      }
+      
+      # delete first (dummy) entry
+      variable_labels_withMissing <- variable_labels_withMissing[-1]
+      code_missing <- code_missing[-1]
+      variable_description_withMissing <- variable_description_withMissing[-1]
+      
+      # create data.frame with missing code infos from codebook
+      variables_withMissingCode_df <- data.frame(VariableLabel=variable_labels_withMissing, 
+                                                 MissingCode=code_missing,
+                                                 VariableDescription=variable_description_withMissing)
+      
+       
+       
+     
+      
+      
+      # take columns from results data, where missing code can occur
+        names_missingcode_vars <- as.character(variables_withMissingCode_df$VariableLabel)
+        results_only_variables_withMissingCodes <- rawdata_results[names_missingcode_vars] 
+
+        
+        # count number of "missing cases" PER VARIABLE (i.e. per col)
+        bool.missing <- (results_only_variables_withMissingCodes == "99" | results_only_variables_withMissingCodes == "999")
+        number_missingCases_perVariable <- colSums(bool.missing, na.rm=TRUE)
+        sum_missingCases_perVariable <- sum(number_missingCases_perVariable)
+        
+        # count number of "missing cases" PER PARTICIPANT ID (i.e. per row)
+        number_missingCases_perParticipant <- rowSums(bool.missing, na.rm=TRUE)        
+        sum_missingCases_perParticipant <- sum(number_missingCases_perParticipant)
+        names(number_missingCases_perParticipant) <- 1:length(number_missingCases_perParticipant)
+      
+        # CHECK overall missing cases number
+        sum_missingCases_perVariable == sum_missingCases_perParticipant
+        
+        
+x-----------------------------------------------------------------------------------------------------------------------
+  
+
+###############################################################################################################
+# VISUALIZATION of MISSING DATA ANALYSIS
+###############################################################################################################
+
+         
+        # missing cases per variable label (cols)
+
+            # color palette
+            color_pal <- colorRampPalette(c("lightpink2", "powderblue", "lightgreen"))
+        
+        x11() # open new graphics window
+        barplot(number_missingCases_perVariable,
+                main="missing cases per variable", xlab="variable labels with 'missing' option", 
+                ylab="number of missing cases", 
+                beside=TRUE,  
+                ylim=c(0,max(number_missingCases_perVariable)), 
+                xlim=c(0,length(names_missingcode_vars)+17), 
+                col=color_pal(length(number_missingCases_perVariable)),
+                cex.names=0.7,  # adapt size of axis labels (on x-axis)
+                width=2        
+                )
+            
+            # legend
+            legend("topright", legend = paste(names(number_missingCases_perVariable)),
+                   pch = 16, col = color_pal(length(number_missingCases_perVariable)), 
+                   text.col = "black", pt.cex=1.5)
+            
+            
+
+        # missing cases per participand ID (row)
+        
+          # select all IDs, for which number of 'missing' cases is not 0:
+            NOTzero_number_missingCases_perParticipant <- number_missingCases_perParticipant[ number_missingCases_perParticipant!="0" ]
+
+            ids_vector <- as.numeric(names(NOTzero_number_missingCases_perParticipant))
+            names(ids_vector) <- NOTzero_number_missingCases_perParticipant
+             
+             
+            x11() # open new graphics window
+            barplot(NOTzero_number_missingCases_perParticipant,
+                    main="missing cases per participant ID", xlab="participant ID", 
+                    ylab="number of missing cases", 
+                    beside=TRUE,  
+                    col="rosybrown2",
+                    xlim=c(0,length(NOTzero_number_missingCases_perParticipant)+15)
+            )       
+                                                      
+        
+            x11() # open new graphics window
+            plot(NOTzero_number_missingCases_perParticipant,
+                    main="missing cases per participant ID", xlab="participant ID", ylab="number of missing cases", 
+                    col="red", pch=18
+            )       
+            
+         
+            # frequency table:
+              tab.missing_perParticipant_inclZeros <- table(number_missingCases_perParticipant)
+              tab.missing_perParticipant <- table(NOTzero_number_missingCases_perParticipant)
+              
+              # incl. zero missing cases:
+              x11() # open new graphics window
+              barplot(tab.missing_perParticipant_inclZeros,
+                      main="missing cases per participant ID", xlab="number of 'missing' cases", ylab="number of participant IDs", 
+                      beside=TRUE,  
+                      col="navajowhite2",
+                      ylim=c(0,400)
+              )      
+              
+              # without zero missing cases:
+              x11() # open new graphics window
+              barplot(tab.missing_perParticipant,
+                      main="missing cases per participant ID", xlab="number of 'missing' cases", ylab="number of participant IDs", 
+                      beside=TRUE,  
+                      col="navajowhite1"
+              )          
+            
+            
+
+              
+            
+# ------------------------------------------------------------------------------------------------------------
+            
+###############################################################################################################
+# ANALYSIS OF SUSPECT PARTICIPANTS IN RESULTS DATA (according to response behavior regarding questions v044,
+# v045, v046a, v046b, v046c, v046d)
+###############################################################################################################
+              
+              
+   # base data variables for analysis:
+     # analysis_variables
+       analysis_variables_suspect <- c("v044", "v045", "v046a", "v046b", "v046c", "v046d")
+     # rawdata_results
+       suspectTest_data <- rawdata_results[, analysis_variables_suspect]       
+     # codebook
+     # suspect_participantId_vector
+       suspect_participantId_vector <- "0"
+       
+       
+       
+              
+   #  ASSUMPTION FOR ANALSYIS:
+   #  suspect participantId occurs if participant selected same answer code for question v044, v045, v046a, v046b, v046c, v046d           
+    
+      # iterate over participantId list        
+      for(i in 1:nrow(suspectTest_data)){
+        
+        current_participantId <- rownames(suspectTest_data)[i]
+        testValue <- suspectTest_data[i,1]
+        
+        # check if all analysis variables have same value (if TRUE: suspect; if FALSE: not suspect participantId)
+        bool_suspectParticipant <- all(suspectTest_data[i,] == testValue)
+        
+        # if suspect true, add current participantId to the suspect list:
+        if(bool_suspectParticipant){ 
+            suspect_participantId_vector <- c(suspect_participantId_vector, current_participantId)
+        }
+        
+      } 
+       
+       
+      if(length(suspect_participantId_vector) != 1){  
+        suspect_participantId_vector <- suspect_participantId_vector[-1]
+      } 
+
+                     
+      
+      # CHECK: show suspect participantIds        
+      suspect_participantId_vector         
+              
+      
+      # CHECK: show responses of suspect participantIds 
+      suspectTest_data[suspect_participantId_vector,]
+              
+          
+      
+                     
+
+# ------------------------------------------------------------------------------------------------------------
+        
+###############################################################################################################
+# WRITE ANALYSIS RESULTS TO EXCEL FILE:
+###############################################################################################################
+              
+              
+    # dummy errorlist used for test write actions:
+         dummy_errorlist_ISWAF <- vector("list")
+         sc <- selectedcountry
+         dummy_numberOfParticipants <- 50
+           
+         participantIDs_dummy_v017 <- c(1,4,6,8,9,22,40,44,46)
+         incorrectValues_dummy_v017 <- c(22,23,42,52,62,62,62,62,31)
+         
+         participantIDs_dummy_v018 <- c(2,5,7,30)
+         incorrectValues_dummy_v018 <- c(3,6,7,8)       
+       
+         # add dummy entry for v017
+         errorentry_dummy_v017 <- vector("list")     
+         errorentry_dummy_v017$`Variable Label` <- "v017"
+         errorentry_dummy_v017$`Variable Description` <- codebook$v017$`Variable Description`
+         errorentry_dummy_v017$participantIDs <- participantIDs_dummy_v017
+         errorentry_dummy_v017$incorrectValues <- incorrectValues_dummy_v017 
+         dummy_errorlist_ISWAF$v017 <- errorentry_dummy_v017   
+ 
+         # add dummy entry for v018
+         errorentry_dummy_v018 <- vector("list")     
+         errorentry_dummy_v018$`Variable Label` <- "v018"
+         errorentry_dummy_v018$`Variable Description` <- codebook$v018$`Variable Description`
+         errorentry_dummy_v018$participantIDs <- participantIDs_dummy_v018
+         errorentry_dummy_v018$incorrectValues <- incorrectValues_dummy_v018 
+         dummy_errorlist_ISWAF$v018 <- errorentry_dummy_v018   
+         
+         # dummy errorlist for writing data into file
+         dummy_errorlist_ISWAF
+                
+         
+         
+      # FUNCTION TO CREATE DATA.FRAME CONTAINING ERRORS:
+         
+           # parameters:
+           #   nr_participants ... overall number of participants to the survey
+           #   errorlist ... list of coding errors (i.e. out of allowed code range) that were noticed in the survey results
+         
+         nr_participants <- nrow(rawdata_results)
+         
+         
+         
+## real errorlist   
+         errorlist <- errorlist_ISWAF    # (FOR TESTING: take dummy_errorlist_ISWAF)
+
+  
+         
+  if(length(errorlist_ISWAF)!=0){
+     
+         getErrors_df <- function(nr_participants, errorlist){
+           
+           # prepare errors_matrix (with 0 meaning that there was no error for the corresponding participantID)
+           errors_matrix <- matrix(rep(0,length(errorlist)*nr_participants), 
+                                   ncol=length(errorlist),nrow=nr_participants)
+           
+           error_variable_labels <- unlist(lapply(errorlist,"[",1))
+           colnames(errors_matrix) <- error_variable_labels
+           
+           # enter the incorrect values in the corresponding participantID row for each question (i.e. Variable Label)
+           # where an incorrect value occurred; with 0 meaning that there was no incorrect value
+           for(i in 1:length(errorlist)){
+             for(j in 1:length(errorlist[[i]]$participantIDs)){
+               
+                errors_matrix[as.numeric(errorlist[[i]]$participantIDs[j]),i] <- as.character(errorlist[[i]]$incorrectValues[j])  
+                                                                                  # as.numeric .... $participantids -- before
+             }
+           }
+           
+           errors_df <- as.data.frame(errors_matrix, stringsAsFactors=FALSE)
+           
+           id_vec <- 1:nrow(rawdata_results)
+           errors_df <- cbind(id_vec, errors_df)
+           colnames(errors_df)[1] <- "participantID"
+           # RETURN: errors_df
+           errors_df
+           
+         }
+         
+         # TEST FUNCTION getErrors_matrix for the dummy data:
+         errors_df <- getErrors_df(nr_participants=nr_participants, errorlist=errorlist)
+         colnames_errors_df <- colnames(errors_df) # extend df for formatting in excel
+         errors_df <- rbind(rep("",ncol(errors_df)), 
+                            rep("",ncol(errors_df)), 
+                            rep("",ncol(errors_df)),
+                            colnames_errors_df, 
+                            errors_df)
+                  
+  } ## END IF length(errorlist_ISWAF)!=0         
+
+
+         
+         
+         
+    # WORKSHEET 1: WRITE errors_df to excel file:
+         
+         
+         # create file path where excel sheet will be placed:
+         xls_file <- paste0(getwd(),"/quality_checks_", selectedcountry,".xlsx") 
+
+  
+ if(length(errorlist_ISWAF)!=0){ 
+   
+         errors_df[2,1] <- "0 ... coding if no error in the cell"
+         
+         # write worksheet "errors_COUNTRYNAME" in the xls_file
+         write.xlsx(x=errors_df, 
+                    file=xls_file,
+                    sheetName=paste0("errors_",selectedcountry),
+                    row.names=FALSE, 
+                    col.names=FALSE)
+
+         # open workbook xls_file
+         wb <- loadWorkbook(xls_file)
+         sheet1 <- getSheets(wb)[[1]]
+
+         
+             # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+             TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                                color="black", isBold=TRUE, underline=1)
+             
+             xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+               rows <-createRow(sheet,rowIndex=rowIndex)
+               sheetTitle <-createCell(rows, colIndex=1)
+               setCellValue(sheetTitle[[1,1]], title)
+               setCellStyle(sheetTitle[[1,1]], titleStyle)
+             }
+         
+         
+         # add title 
+         xlsx.addTitle(sheet1, 
+                       rowIndex=1, 
+                       title=paste0("suspected errors ",tolower(selectedcountry)),
+                       titleStyle = TITLE_STYLE)
+         
+         
+         # save workbook          
+         saveWorkbook(wb, xls_file) 
+         
+        
+ }  ## END IF length(errorlist_ISWAF)!=0
+  
+                
+
+ if(length(errorlist_ISWAF)==0){ 
+
+   
+           # comment in errors_df that there are "no errors"
+           no_error <- "no errors detected"
+           errors_df <- data.frame(errorsinfo=no_error,col2="", stringsAsFactors=FALSE)
+           errors_df   
+           errors_df <- rbind(rep("",ncol(errors_df)), 
+                              rep("",ncol(errors_df)),
+                              errors_df)
+
+           
+           # write worksheet "errors_COUNTRYNAME" in the xls_file
+           write.xlsx(x=errors_df, 
+                      file=xls_file,
+                      sheetName=paste0("errors_",selectedcountry),
+                      row.names=FALSE, 
+                      col.names=FALSE)
+           
+           # open workbook xls_file
+           wb <- loadWorkbook(xls_file)
+           sheet1 <- getSheets(wb)[[1]]
+           
+           
+           # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+           TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                              color="black", isBold=TRUE, underline=1)
+           
+           xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+             rows <-createRow(sheet,rowIndex=rowIndex)
+             sheetTitle <-createCell(rows, colIndex=1)
+             setCellValue(sheetTitle[[1,1]], title)
+             setCellStyle(sheetTitle[[1,1]], titleStyle)
+           }
+           
+           
+           # add title 
+           xlsx.addTitle(sheet1, 
+                         rowIndex=1, 
+                         title=paste0("suspected errors ",tolower(selectedcountry)),
+                         titleStyle = TITLE_STYLE)
+           
+           
+           # save workbook          
+           saveWorkbook(wb, xls_file)
+           
+           
+   
+   
+ } ## END IF (case: length(errorlist_ISWAF)==0)
+           
+   
+         
+        
+
+                  
+
+    # WORKSHEET 2: WRITE number_missingcases_perVariable to excel 
+         
+         
+         # basis: create data.frame from vector
+         number_missingCases_perVariable_df <- data.frame(variableLabel=names(number_missingCases_perVariable),
+                                                          missingCases=as.numeric(number_missingCases_perVariable), 
+                                                          stringsAsFactors=FALSE
+                                                          )
+         # set numeric col
+         number_missingCases_perVariable_df[ ,2] <- sapply(number_missingCases_perVariable_df[ ,2], as.numeric)
+         
+
+         # write data to excel
+         wb <- loadWorkbook(xls_file)
+         
+         sheet <- createSheet(wb, sheetName="missing_perVariable")
+         addDataFrame(number_missingCases_perVariable_df, sheet, startRow=3, startColumn=1)
+         saveWorkbook(wb, xls_file)
+         
+         
+
+         # prepare add title
+         
+         # open workbook xls_file
+         wb <- loadWorkbook(xls_file)
+         sheet1 <- getSheets(wb)[[2]]
+         
+             # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+             TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                                color="black", isBold=TRUE, underline=1)
+             
+             xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+               rows <-createRow(sheet,rowIndex=rowIndex)
+               sheetTitle <-createCell(rows, colIndex=1)
+               setCellValue(sheetTitle[[1,1]], title)
+               setCellStyle(sheetTitle[[1,1]], titleStyle)
+             }
+         
+         
+         # add title 
+         xlsx.addTitle(sheet1, 
+                       rowIndex=1, 
+                       title="missing cases per variable label",
+                       titleStyle = TITLE_STYLE)
+         
+         
+         # save workbook          
+         saveWorkbook(wb, xls_file)         
+         
+         
+         
+         
+                  
+         
+    # WORKSHEET 3: WRITE number_missingcases_perParticipant to excel 
+         
+         # basis: create data.frame from vector
+         number_missingCases_perParticipant_df <- data.frame(participantID=names(number_missingCases_perParticipant),
+                                                             missingCases=as.numeric(number_missingCases_perParticipant),
+                                                             stringsAsFactors=FALSE
+                                                             )
+         
+         # set numeric cols
+         number_missingCases_perParticipant_df[ ,1:2] <- sapply(number_missingCases_perParticipant_df[ ,1:2], as.numeric)
+         
+         
+         # write data to excel
+         wb <- loadWorkbook(xls_file)
+         
+         sheet <- createSheet(wb, sheetName="missing_perParticipant")
+         addDataFrame(number_missingCases_perParticipant_df, sheet, startRow=3, startColumn=1)
+         saveWorkbook(wb, xls_file)
+         
+         
+         # prepare add title
+  
+         # open workbook xls_file
+         wb <- loadWorkbook(xls_file)
+         sheet1 <- getSheets(wb)[[3]]
+         
+         # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+         TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                            color="black", isBold=TRUE, underline=1)
+         
+         xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+           rows <-createRow(sheet,rowIndex=rowIndex)
+           sheetTitle <-createCell(rows, colIndex=1)
+           setCellValue(sheetTitle[[1,1]], title)
+           setCellStyle(sheetTitle[[1,1]], titleStyle)
+         }
+         
+         
+         # add title 
+         xlsx.addTitle(sheet1, 
+                       rowIndex=1, 
+                       title="missing cases per participantID",
+                       titleStyle = TITLE_STYLE)
+         
+         
+         # save workbook          
+         saveWorkbook(wb, xls_file)             
+         
+         
+         
+    
+         
+    # WORKSHEET 4: WRITE tab.missing_perParticipant to excel 
+         
+         # basis: create data.frame from table
+         tab.missing_perParticipant_df <- data.frame(numberMissingCases_PerParticipant=names(tab.missing_perParticipant),
+                                                     numberParticipants=as.numeric(tab.missing_perParticipant), 
+                                                     stringsAsFactors=FALSE)
+         
+
+         # set numeric cols
+         tab.missing_perParticipant_df[ ,1:2] <- sapply(tab.missing_perParticipant_df[ ,1:2], as.numeric)
+         
+         
+         # write data to excel
+         wb <- loadWorkbook(xls_file)
+         
+         sheet <- createSheet(wb, sheetName="missing_perPerson_table")
+         addDataFrame(tab.missing_perParticipant_df, sheet, startRow=3, startColumn=1)
+         saveWorkbook(wb, xls_file)
+         
+         
+         # prepare add title         
+      
+         # open workbook xls_file
+         wb <- loadWorkbook(xls_file)
+         sheet1 <- getSheets(wb)[[4]]
+         
+         # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+         TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                            color="black", isBold=TRUE, underline=1)
+         
+         xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+           rows <-createRow(sheet,rowIndex=rowIndex)
+           sheetTitle <-createCell(rows, colIndex=1)
+           setCellValue(sheetTitle[[1,1]], title)
+           setCellStyle(sheetTitle[[1,1]], titleStyle)
+         }
+         
+         
+         # add title 
+         xlsx.addTitle(sheet1, 
+                       rowIndex=1, 
+                       title="number of missing cases among participants",
+                       titleStyle = TITLE_STYLE)
+         
+         
+         # save workbook          
+         saveWorkbook(wb, xls_file)             
+         
+         
+         
+    
+            
+         
+         
+    # WORKSHEET 5: WRITE tab.missing_perParticipant_inclZeros to excel 
+         
+         # basis: create data.frame from table
+         tab.missing_perParticipant_inclZeros_df <- data.frame(numberMissingCases_PerParticipant=names(tab.missing_perParticipant_inclZeros),
+                                                     numberParticipants=as.numeric(tab.missing_perParticipant_inclZeros), 
+                                                     stringsAsFactors=FALSE)
+         
+         # set numeric cols
+         tab.missing_perParticipant_inclZeros_df[ ,1:2] <- sapply(tab.missing_perParticipant_inclZeros_df[ ,1:2], as.numeric)
+         
+         
+         # write data to excel
+         wb <- loadWorkbook(xls_file)
+         
+         sheet <- createSheet(wb, sheetName="missing_perPerson_table_incl0")
+         addDataFrame(tab.missing_perParticipant_inclZeros_df, sheet, startRow=3, startColumn=1)
+         saveWorkbook(wb, xls_file)
+         
+         
+         # prepare add title        
+
+         # open workbook xls_file
+         wb <- loadWorkbook(xls_file)
+         sheet1 <- getSheets(wb)[[5]]
+         
+         # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+         TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                            color="black", isBold=TRUE, underline=1)
+         
+         xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+           rows <-createRow(sheet,rowIndex=rowIndex)
+           sheetTitle <-createCell(rows, colIndex=1)
+           setCellValue(sheetTitle[[1,1]], title)
+           setCellStyle(sheetTitle[[1,1]], titleStyle)
+         }
+         
+         
+         # add title 
+         xlsx.addTitle(sheet1, 
+                       rowIndex=1, 
+                       title="number of missing cases among participants (incl. zeros)",
+                       titleStyle = TITLE_STYLE)
+         
+         
+         # save workbook          
+         saveWorkbook(wb, xls_file)             
+
+          
+ #---------------------------------------------------------------------------------------------------------         
+         
+##########################################################################################################
+# WRITE PLOTS TO EXCEL FILE:
+##########################################################################################################    
+      
+                  
+    # WORKSHEET 6: WRITE PLOT for missingCases_perVariable to excel:
+         
+         # color palette
+           color_pal <- colorRampPalette(c("lightpink2", "powderblue", "lightgreen"))
+         
+         # create jpeg file from plot:
+           png('missingCases_perVariable.png')
+           barplot(number_missingCases_perVariable,
+                   main="missing cases per variable", xlab="variable labels with 'missing' option", ylab="number of missing cases", beside=TRUE,  
+                   ylim=c(0,max(number_missingCases_perVariable)), 
+                   xlim=c(0,length(names_missingcode_vars)+17), 
+                   col=color_pal(length(number_missingCases_perVariable)),
+                   cex.names=0.7,  # adapt size of axis labels (on x-axis)
+                   width=2
+                   )
+           dev.off() # switch off graphics window
+         
+         
+         # open workbook xls_file
+           wb <- loadWorkbook(xls_file)
+           
+         # create new worksheet for the file
+           sheet <- createSheet(wb, "plot_missingCases_perVariable")
+
+
+           # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+           TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                              color="black", isBold=TRUE, underline=1)
+           
+           xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+             rows <-createRow(sheet,rowIndex=rowIndex)
+             sheetTitle <-createCell(rows, colIndex=1)
+             setCellValue(sheetTitle[[1,1]], title)
+             setCellStyle(sheetTitle[[1,1]], titleStyle)
+           }
+           
+           
+         # add title 
+           xlsx.addTitle(sheet, 
+                         rowIndex=1, 
+                         title="missing cases per variable",
+                         titleStyle = TITLE_STYLE)
+           
+         
+         # add plot to the worksheet
+           addPicture("missingCases_perVariable.png", sheet, 
+                      startRow=3,
+                      startColumn=2, 
+                      scale=10)
+           
+         # remove png from current work directory
+           res<-file.remove("missingCases_perVariable.png")
+           
+         # save changed workbook in xls_file object
+           saveWorkbook(wb, xls_file) 
+         
+         
+      
+           
+       
+
+           
+  # WORKSHEET 7: WRITE PLOT for missing cases per participant ID (incl. zeros) to excel:
+           
+           # create jpeg file from plot:
+           png('missingCases_perParticipant.png')
+           barplot(tab.missing_perParticipant_inclZeros,
+                   main="missing cases per participant ID", 
+                   xlab="number of 'missing' cases", 
+                   ylab="number of participant IDs", 
+                   beside=TRUE,  
+                   col="navajowhite2",
+                   ylim=c(0,400)
+           )                 
+           dev.off() # switch off graphics window    
+           
+           
+           # open workbook xls_file
+           wb <- loadWorkbook(xls_file)
+           
+           # create new worksheet for the file
+           sheet <- createSheet(wb, "plot_missingCases_perParticipant")
+           
+           # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+           TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                              color="black", isBold=TRUE, underline=1)
+           
+           xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+             rows <-createRow(sheet,rowIndex=rowIndex)
+             sheetTitle <-createCell(rows, colIndex=1)
+             setCellValue(sheetTitle[[1,1]], title)
+             setCellStyle(sheetTitle[[1,1]], titleStyle)
+           }
+           
+           # add title 
+           xlsx.addTitle(sheet, 
+                         rowIndex=1, 
+                         title="missing cases per participant",
+                         titleStyle = TITLE_STYLE)
+           
+           # add plot to the worksheet
+           addPicture("missingCases_perParticipant.png", sheet, 
+                      startRow=3,
+                      startColumn=2, 
+                      scale=10)
+           
+           # remove png from current work directory
+           res<-file.remove("missingCases_perParticipant.png")
+           
+           # save changed workbook in xls_file object
+           saveWorkbook(wb, xls_file) 
+  
+
+           
+           
+  
+           
+#---------------------------------------------------------------------------------------------------------         
+           
+##########################################################################################################
+# WRITE SUSPECT PARTICIPANT IDs TO EXCEL FILE:
+##########################################################################################################               
+           
+           
+           
+ # WORKSHEET 8: WRITE suspect participantIds to excel 
+           
+           
+           # basis: create data.frame from suspectParticipantId_vector and suspectData
+           suspectParticipantId_df <- data.frame(participantID=suspect_participantId_vector,
+                                                 suspectTest_data[suspect_participantId_vector,],
+                                                 stringsAsFactors=FALSE
+           )
+           
+           
+           # set numeric col
+           suspectParticipantId_df[ ,1:ncol(suspectParticipantId_df)] <- sapply(suspectParticipantId_df[ ,1:ncol(suspectParticipantId_df)], as.numeric)
+           
+           
+           # write data to excel
+           wb <- loadWorkbook(xls_file)
+           
+           sheet <- createSheet(wb, sheetName="suspect_participantId")
+           addDataFrame(suspectParticipantId_df, sheet, startRow=3, startColumn=1)
+           saveWorkbook(wb, xls_file)
+           
+           
+           
+           # prepare add title
+           
+           # open workbook xls_file
+           wb <- loadWorkbook(xls_file)
+           sheet1 <- getSheets(wb)[[8]]
+           
+           # preparation for titles: (source: http://www.sthda.com/english/wiki/print.php?id=151#add-a-title-into-a-worksheet)
+           TITLE_STYLE <- CellStyle(wb)+ Font(wb,  heightInPoints=14, 
+                                              color="black", isBold=TRUE, underline=1)
+           
+           xlsx.addTitle<-function(sheet, rowIndex, title, titleStyle){
+             rows <-createRow(sheet,rowIndex=rowIndex)
+             sheetTitle <-createCell(rows, colIndex=1)
+             setCellValue(sheetTitle[[1,1]], title)
+             setCellStyle(sheetTitle[[1,1]], titleStyle)
+           }
+           
+           
+           # add title 
+           xlsx.addTitle(sheet1, 
+                         rowIndex=1, 
+                         title="suspect participantIDs",
+                         titleStyle = TITLE_STYLE)
+           
+           
+           # save workbook          
+           saveWorkbook(wb, xls_file)             
+           
+           
+           
+
+           
+
+           
+           
+#----------------------------------------------------------------------------------------------------------------           
+           
+  # execute if workspace clean-up desired:         
+  
+        
+    # keep(filelist,countrylist,a) # indicate which variables should be kept in workspace
+           
+    # keep(filelist,countrylist,a, sure = TRUE) # delete variables not marked "keep" in workspace        
+
+                
+#----------------------------------------------------------------------------------------------------------------       
+
+
+
+
+
+           
+
+       
+      
+    
